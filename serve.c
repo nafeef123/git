@@ -7,6 +7,9 @@
 #include "ls-refs.h"
 #include "serve.h"
 #include "upload-pack.h"
+#include "trace2/tr2_sid.h"
+
+static int advertise_trace2_sid;
 
 static int always_advertise(struct repository *r,
 			    struct strbuf *value)
@@ -27,6 +30,15 @@ static int object_format_advertise(struct repository *r,
 {
 	if (value)
 		strbuf_addstr(value, r->hash_algo->name);
+	return 1;
+}
+
+static int trace2_advertise(struct repository *r, struct strbuf *value)
+{
+	if (!advertise_trace2_sid || !trace2_is_enabled())
+		return 0;
+	if (value)
+		strbuf_addstr(value, tr2_sid_get());
 	return 1;
 }
 
@@ -66,6 +78,7 @@ static struct protocol_capability capabilities[] = {
 	{ "fetch", upload_pack_advertise, upload_pack_v2 },
 	{ "server-option", always_advertise, NULL },
 	{ "object-format", object_format_advertise, NULL },
+	{ "trace2-sid", trace2_advertise, NULL },
 };
 
 static void advertise_capabilities(void)
@@ -261,6 +274,8 @@ static int process_request(void)
 /* Main serve loop for protocol version 2 */
 void serve(struct serve_options *options)
 {
+	git_config_get_bool("trace2.advertisesid", &advertise_trace2_sid);
+
 	if (options->advertise_capabilities || !options->stateless_rpc) {
 		/* serve by default supports v2 */
 		packet_write_fmt(1, "version 2\n");
