@@ -27,6 +27,7 @@
 #include "commit-graph.h"
 #include "commit-reach.h"
 #include "shallow.h"
+#include "trace2/tr2_sid.h"
 
 /* Remember to update object flag allocation in object.h */
 #define THEY_HAVE	(1u << 11)
@@ -110,6 +111,7 @@ struct upload_pack_data {
 	unsigned done : 1;					/* v2 only */
 	unsigned allow_ref_in_want : 1;				/* v2 only */
 	unsigned allow_sideband_all : 1;			/* v2 only */
+	unsigned advertise_trace2_sid : 1;
 };
 
 static void upload_pack_data_init(struct upload_pack_data *data)
@@ -141,6 +143,7 @@ static void upload_pack_data_init(struct upload_pack_data *data)
 	packet_writer_init(&data->writer, 1);
 
 	data->keepalive = 5;
+	data->advertise_trace2_sid = 0;
 }
 
 static void upload_pack_data_clear(struct upload_pack_data *data)
@@ -1178,6 +1181,11 @@ static void format_symref_info(struct strbuf *buf, struct string_list *symref)
 		strbuf_addf(buf, " symref=%s:%s", item->string, (char *)item->util);
 }
 
+static void format_trace2_info(struct strbuf *buf, struct upload_pack_data *d) {
+	if (d->advertise_trace2_sid && trace2_is_enabled())
+		strbuf_addf(buf, " trace2-sid=%s", tr2_sid_get());
+}
+
 static int send_ref(const char *refname, const struct object_id *oid,
 		    int flag, void *cb_data)
 {
@@ -1193,9 +1201,11 @@ static int send_ref(const char *refname, const struct object_id *oid,
 
 	if (capabilities) {
 		struct strbuf symref_info = STRBUF_INIT;
+		struct strbuf trace2_info = STRBUF_INIT;
 
 		format_symref_info(&symref_info, &data->symref);
-		packet_write_fmt(1, "%s %s%c%s%s%s%s%s%s object-format=%s agent=%s\n",
+		format_trace2_info(&trace2_info, data);
+		packet_write_fmt(1, "%s %s%c%s%s%s%s%s%s%s object-format=%s agent=%s\n",
 			     oid_to_hex(oid), refname_nons,
 			     0, capabilities,
 			     (data->allow_uor & ALLOW_TIP_SHA1) ?
@@ -1205,9 +1215,11 @@ static int send_ref(const char *refname, const struct object_id *oid,
 			     data->stateless_rpc ? " no-done" : "",
 			     symref_info.buf,
 			     data->allow_filter ? " filter" : "",
+			     trace2_info.buf,
 			     the_hash_algo->name,
 			     git_user_agent_sanitized());
 		strbuf_release(&symref_info);
+		strbuf_release(&trace2_info);
 	} else {
 		packet_write_fmt(1, "%s %s\n", oid_to_hex(oid), refname_nons);
 	}
@@ -1299,6 +1311,8 @@ static int upload_pack_config(const char *var, const char *value, void *cb_data)
 		data->allow_sideband_all = git_config_bool(var, value);
 	} else if (!strcmp("core.precomposeunicode", var)) {
 		precomposed_unicode = git_config_bool(var, value);
+	} else if (!strcmp("trace2.advertisesid", var)) {
+		data->advertise_trace2_sid = git_config_bool(var, value);
 	}
 
 	if (current_config_scope() != CONFIG_SCOPE_LOCAL &&
