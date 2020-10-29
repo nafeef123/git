@@ -2040,6 +2040,7 @@ static struct command *read_head_info(struct packet_reader *reader,
 		if (linelen < reader->pktlen) {
 			const char *feature_list = reader->line + linelen + 1;
 			const char *hash = NULL;
+			const char *client_trace2_sid;
 			int len = 0;
 			if (parse_feature_request(feature_list, "report-status"))
 				report_status = 1;
@@ -2062,6 +2063,12 @@ static struct command *read_head_info(struct packet_reader *reader,
 			}
 			if (xstrncmpz(the_hash_algo->name, hash, len))
 				die("error: unsupported object format '%s'", hash);
+			client_trace2_sid = parse_feature_value(feature_list, "trace2-sid", &len, NULL);
+			if (client_trace2_sid) {
+				char *client_sid = xstrndup(client_trace2_sid, len);
+				trace2_data_string("trace2", NULL, "client-sid", client_sid);
+				free(client_sid);
+			}
 		}
 
 		if (!strcmp(reader->line, "push-cert")) {
