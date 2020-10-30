@@ -16,6 +16,7 @@
 #include "gpg-interface.h"
 #include "cache.h"
 #include "shallow.h"
+#include "trace2/tr2_sid.h"
 
 int option_parse_push_signed(const struct option *opt,
 			     const char *arg, int unset)
@@ -424,6 +425,8 @@ int send_pack(struct send_pack_args *args,
 	int use_sideband = 0;
 	int quiet_supported = 0;
 	int agent_supported = 0;
+	int server_sent_trace2_sid = 0;
+	int advertise_trace2_sid = 0;
 	int use_atomic = 0;
 	int atomic_supported = 0;
 	int use_push_options = 0;
@@ -434,6 +437,8 @@ int send_pack(struct send_pack_args *args,
 	struct async demux;
 	const char *push_cert_nonce = NULL;
 	struct packet_reader reader;
+
+	git_config_get_bool("trace2.advertisesid", &advertise_trace2_sid);
 
 	/* Does the other end support the reporting? */
 	if (server_supports("report-status-v2"))
@@ -450,6 +455,8 @@ int send_pack(struct send_pack_args *args,
 		quiet_supported = 1;
 	if (server_supports("agent"))
 		agent_supported = 1;
+	if (server_supports("trace2-sid"))
+		server_sent_trace2_sid = 1;
 	if (server_supports("no-thin"))
 		args->use_thin_pack = 0;
 	if (server_supports("atomic"))
@@ -506,6 +513,8 @@ int send_pack(struct send_pack_args *args,
 		strbuf_addf(&cap_buf, " object-format=%s", the_hash_algo->name);
 	if (agent_supported)
 		strbuf_addf(&cap_buf, " agent=%s", git_user_agent_sanitized());
+	if (advertise_trace2_sid && server_sent_trace2_sid && trace2_is_enabled())
+		strbuf_addf(&cap_buf, " trace2-sid=%s", tr2_sid_get());
 
 	/*
 	 * NEEDSWORK: why does delete-refs have to be so specific to
